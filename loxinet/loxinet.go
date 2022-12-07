@@ -24,6 +24,9 @@ import (
 
 	apiserver "github.com/loxilb-io/loxilb/api"
 	nlp "github.com/loxilb-io/loxilb/api/loxinlp"
+	"github.com/loxilb-io/loxilb/loxiexporter/flowexporter"
+	"github.com/loxilb-io/loxilb/loxiexporter/flowexporter/exporter"
+	"github.com/loxilb-io/loxilb/loxiexporter/signals"
 	opts "github.com/loxilb-io/loxilb/options"
 	tk "github.com/loxilb-io/loxilib"
 )
@@ -120,6 +123,26 @@ func loxiNetInit() {
 	if opts.Opts.NoApi == false {
 		apiserver.RegisterAPIHooks(NetAPIInit())
 		go apiserver.RunAPIServer()
+	}
+	if opts.Opts.NoExporter {
+		exporter.RegisterApiHooks(NetAPIInit())
+		var flowExporter *exporter.FlowExporter
+		flowExporterOptions := &flowexporter.FlowExporterOptions{
+			FlowCollectorAddr:      opts.Opts.FlowCollectorAddr,
+			FlowCollectorProto:     opts.Opts.FlowCollectorProto,
+			ActiveFlowTimeout:      time.Duration(opts.Opts.ActiveFlowTimeout) * time.Second,
+			IdleFlowTimeout:        time.Duration(opts.Opts.IdleFlowTimeout) * time.Second,
+			StaleConnectionTimeout: time.Duration(opts.Opts.StaleConnectionTimeout) * time.Second,
+			PollInterval:           time.Duration(opts.Opts.PollInterval) * time.Second,
+			ConnectUplinkToBridge:  !opts.Opts.ConnectUplinkToBridge, // Default is true
+		}
+		stopCh := signals.RegisterSignalHandlers()
+		fmt.Printf("flowExporterOptions: %v\n", flowExporterOptions)
+		flowExporter, err := exporter.NewFlowExporter(true, true, flowExporterOptions)
+		if err != nil {
+			return
+		}
+		flowExporter.Run(stopCh)
 	}
 }
 
