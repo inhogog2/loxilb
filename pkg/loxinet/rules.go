@@ -2626,9 +2626,15 @@ func (R *RuleH) SetEPHostState(hostName string, epPort uint16, epProto string, s
 
 func (ep *epHost) transitionEPState(currState bool, inactThr int) {
 	if currState {
+		// Reset the failure counter on ANY successful probe, not only when
+		// transitioning back from inactive. Otherwise inActTries accumulates
+		// across the endpoint's entire active lifetime, so sporadic, non-
+		// consecutive probe misses eventually trip inactThr and flap a healthy
+		// endpoint to inactive. proberetries is documented as the number of
+		// retries before marking an endpoint inactive (consecutive failures).
+		ep.inActTries = 0
 		if ep.inactive {
 			ep.inactive = false
-			ep.inActTries = 0
 			ep.opts.currProbeDuration = ep.opts.probeDuration
 			tk.LogIt(tk.LogDebug, "active ep - %s:%s:%d(%v)\n",
 				ep.epKey, ep.opts.probeType, ep.opts.probePort, ep.avgDelay)
