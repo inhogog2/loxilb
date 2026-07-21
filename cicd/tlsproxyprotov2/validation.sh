@@ -91,10 +91,25 @@ echo "backend nginx PROXY-parse errors (proof bytes reached backend, header corr
 $dexec l3ep1 tail -n 3 /var/log/nginx/error.log 2>/dev/null | grep -i "proxy" | sed 's/^/  /'
 
 # ---------- verdict ----------
+# EXPECT=bug   (default): assert the bug REPRODUCES (pre-fix baseline).
+# EXPECT=fixed          : assert the GSO case now PASSES (post-fix regression gate).
+EXPECT="${EXPECT:-bug}"
 setoff on; setmtu ""
 echo "=================================================================="
 verdict=1
-if [[ "$on_cls" != OK && "$off_cls" == OK && $base_ok == 1 ]]; then
+if [[ "$EXPECT" == "fixed" ]]; then
+  if [[ "$on_cls" == OK && "$off_cls" == OK && $base_ok == 1 ]]; then
+    echo "RESULT: FIXED - GSO super-packet ClientHello now passes."
+    echo "  - single-segment hello (CONTROL-1): OK"
+    echo "  - multi-segment, offload OFF (CONTROL-2): OK"
+    echo "  - GSO super-packet, offload ON  (REPRO):  OK   <- was FAIL before the fix"
+    verdict=0
+  elif [[ $base_ok != 1 ]]; then
+    echo "RESULT: inconclusive - even the single-segment control failed (env/routing issue)."
+  else
+    echo "RESULT: NOT fixed. on=$on_cls off=$off_cls base_ok=$base_ok"
+  fi
+elif [[ "$on_cls" != OK && "$off_cls" == OK && $base_ok == 1 ]]; then
   echo "RESULT: REPRODUCED #1044/#1089."
   echo "  - single-segment hello (CONTROL-1): OK"
   echo "  - multi-segment, offload OFF (CONTROL-2): OK   <- not a PMTU/MTU problem"
@@ -107,5 +122,9 @@ else
 fi
 echo "=================================================================="
 
-if [[ $verdict == 0 ]]; then echo SCENARIO-tlsproxyprotov2 [OK] "(bug reproduced)"; else echo SCENARIO-tlsproxyprotov2 [FAILED] "(not reproduced)"; fi
+if [[ $verdict == 0 ]]; then
+  [[ "$EXPECT" == "fixed" ]] && echo SCENARIO-tlsproxyprotov2 [OK] "(fix verified)" || echo SCENARIO-tlsproxyprotov2 [OK] "(bug reproduced)"
+else
+  [[ "$EXPECT" == "fixed" ]] && echo SCENARIO-tlsproxyprotov2 [FAILED] "(fix not verified)" || echo SCENARIO-tlsproxyprotov2 [FAILED] "(not reproduced)"
+fi
 exit $verdict
